@@ -11,5 +11,5 @@ c:
 
 clean:
 	-rm -f *.o
-	-rm -f *.txt
+	#-rm -f *.txt
 	-rm -f $(TARGETC)

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
@@ -188,9 +189,107 @@ void *carnage(void *args){
     pthread_exit(0);
 }
 
+void readConfiguration(){
+    char const* const fileName = "config.txt";
+    FILE* file = fopen(fileName, "r");  //abre archivo de configuracion
+    char line[256];
+    const char s[4] = " = ";
+    char *token;
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    bridgeLen = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    expAverageL = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    expAverageR = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    vehicleVelocityL = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    vehicleVelocityR = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    K1 = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    K2 = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    greenLightTimeL = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    greenLightTimeR = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    vehiclesL = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    vehiclesR = atoi(token);
+
+    fclose(file);
+}
+
 int main(){
+
+    readConfiguration();
+
+    /*
+    //////////// MENU QUE PODEMOS USAR ////////////
+
+    int option;
+
+    printf("\n                   NarrowBridge\n");
+    printf("\n");
+    printf("Escoja el modo a ejecutar:\n");
+    printf("\n");
+    printf("1) Carnage.\n");
+    printf("2) Semaforos.\n");
+    printf("3) Oficiales de transito.\n");
+    printf("\n");
+    printf("-> ");
+    scanf("%d", &option);
+
+    if (option == 1){
+        //correr carnage
+    }
+    else if (option == 2){
+        //correr semaforos
+    }
+    else if (option == 3){
+        //correr oficiales de transito
+    }
+    else{
+        printf("\nOpcion invalida\n");
+    }
+    //////////////////////////////////////////////
+    */
+
     srand(time(NULL));   // Initialization, should only be called once.
-    scanf("%d",&bridgeLen);
   
     bridge = (pthread_mutex_t*) malloc(bridgeLen*sizeof(pthread_mutex_t));
     //condtitions = (pthread_cond_t*) malloc(bridgeLen*sizeof(pthread_cond_t));
@@ -206,17 +305,6 @@ int main(){
     for(int i=0;i<bridgeLen;i++){
         pthread_mutex_init(&bridge[i],NULL);
     }
-
-    expAverageL = 5;
-    expAverageR = 5;
-    vehicleVelocityL = 4;
-    vehicleVelocityR = 3;//segundos
-    K1 =  6;
-    K2 =  5;
-    greenLightTimeL = 5;
-    greenLightTimeR = 4;
-    vehiclesL = 10;
-    vehiclesR = 10;
 
     vehiclesPL = (pthread_t*) malloc(vehiclesL*sizeof(pthread_t));
     vehiclesPR = (pthread_t*) malloc(vehiclesR*sizeof(pthread_t));
