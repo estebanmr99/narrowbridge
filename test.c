@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
 
 #define T 500
 #define lock pthread_mutex_lock
@@ -23,6 +24,7 @@ int isSafeL, isSafeR;
 int ambulanceL, ambulanceR;
 int vehiculesOnBridge;
 int vehiculeQueueL, vehiculeQueueR;
+pthread_mutex_t mymutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 void *vehicleRtoL(void *args){
@@ -44,16 +46,12 @@ void *vehicleRtoL(void *args){
     if(vehiculesOnBridge == 0)
         isSafeR = 1;
 
-    //printf("%d", vehiculeQueueR);
-
     while(ambulanceL || !isSafeR){ //se maneja por la funcion que administra el puente, 0 no es seguro, 1 es seguro
         isSafeR = 0;
         if(vehiculesOnBridge == 0){
             isSafeR = 1;
-            printf("Ya puede salir");
+            printf("-------------------Ya puede salir---------------\n");
         }
-        //printf("No es seguro para %lu porque hay una ambulancia del otro lado\n", pthread_self());
-        //pthread_cond_wait(&isSafeRcon, &bridge[bridgeLen - 1]);
         if(soynumero > 1){
             pthread_cond_wait(&isSafeRcon, &bridge[bridgeLen - 1]);
         }
@@ -75,12 +73,12 @@ void *vehicleRtoL(void *args){
         unlock(&bridge[i]);
     }
     
-    --vehiculesOnBridge;
+    vehiculesOnBridge = vehiculesOnBridge - 1;
 
     --vehiculeQueueR;
     
     printf("Vehiculo %lu salio.... derecha\n",pthread_self());
-    printf("vehiculos en el puente %d\n", vehiculesOnBridge);
+    printf("--------------- Vehiculos en el puente %d\n", vehiculesOnBridge);
 
     ambulanceR = 0;
 
@@ -113,10 +111,8 @@ void *vehicleLtoR(void *args){
         isSafeL = 0;
         if(vehiculesOnBridge == 0){
             isSafeL = 1;
-            printf("Ya puede salir");
+            printf("-------------------Ya puede salir---------------\n");
         }
-        //printf("%d", ambulanceR);
-        //printf("No es seguro para %lu porque hay una ambulancia del otro lado\n", pthread_self());
         if(soynumero > 1){
             pthread_cond_wait(&isSafeLcon, &bridge[0]);
         }
@@ -138,12 +134,12 @@ void *vehicleLtoR(void *args){
         unlock(&bridge[i]);
     }
     
-    --vehiculesOnBridge;
+    vehiculesOnBridge = vehiculesOnBridge - 1;
 
     --vehiculeQueueL;
     
     printf("Vehiculo %lu salio....\n",pthread_self());
-    printf("vehiculos en el puente %d\n", vehiculesOnBridge);
+    printf("---------------Vehiculos en el puente %d\n", vehiculesOnBridge);
 
     ambulanceL = 0;
 
@@ -151,12 +147,13 @@ void *vehicleLtoR(void *args){
 }
 
 void *createVehiculeR(void *args){
-    for(int i=0;i<4;i++){
+    for(int i=0;i<vehiclesR;i++){
         pthread_create(&vehiclesPR[i],NULL,vehicleRtoL,NULL);
+        int time =  (-1 * expAverageR) * log(1 - (double)rand() / (double)RAND_MAX);
         sleep(1);
     }
     
-    for(int i=0;i<4;i++){
+    for(int i=0;i<vehiclesR;i++){
       pthread_join(vehiclesPR[i],NULL);
     }
 
@@ -164,12 +161,13 @@ void *createVehiculeR(void *args){
 }
 
 void *createVehiculeL(){
-    for(int i=0;i<5;i++){
+    for(int i=0;i<vehiclesL;i++){
         pthread_create(&vehiclesPL[i],NULL,vehicleLtoR,NULL);
+        int time =  (-1 * expAverageL) * log(1 - (double)rand() / (double)RAND_MAX);
         sleep(1);
     }
 
-    for(int i=0;i<5;i++){
+    for(int i=0;i<vehiclesL;i++){
         pthread_join(vehiclesPL[i],NULL);
     }
 
@@ -181,19 +179,11 @@ void *carnage(void *args){
     pthread_t createVehiculeRThread;
     pthread_t createVehiculeLThread;
     
-    pthread_create(&createVehiculeLThread,NULL,createVehiculeL,NULL);
     pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);
+    pthread_create(&createVehiculeLThread,NULL,createVehiculeL,NULL);
 
     pthread_join(createVehiculeRThread,NULL);
     pthread_join(createVehiculeLThread,NULL);
-
-    //unlock(&safeR);
-    //sleep(1);
-    //isSafeR = 1;
-    //pthread_cond_signal(&isSafeRcon);
-    //sleep(1);
-    //pthread_cond_signal(&isSafeRcon);
-
 
     pthread_exit(0);
 }
@@ -217,16 +207,16 @@ int main(){
         pthread_mutex_init(&bridge[i],NULL);
     }
 
-    expAverageL = 4;
-    expAverageR = 4;
+    expAverageL = 5;
+    expAverageR = 5;
     vehicleVelocityL = 4;
     vehicleVelocityR = 3;//segundos
     K1 =  6;
     K2 =  5;
     greenLightTimeL = 5;
     greenLightTimeR = 4;
-    vehiclesL = 5;
-    vehiclesR = 4;
+    vehiclesL = 10;
+    vehiclesR = 10;
 
     vehiclesPL = (pthread_t*) malloc(vehiclesL*sizeof(pthread_t));
     vehiclesPR = (pthread_t*) malloc(vehiclesR*sizeof(pthread_t));
