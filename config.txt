@@ -1,11 +1,11 @@
-bridgeLen = 4
-expAverageL = 5
-expAverageR = 5
+bridgeLen = 9
+expAverageL = 3
+expAverageR = 3
 vehicleVelocityL = 4
 vehicleVelocityR = 3
 K1 = 6
 K2 = 5
 greenLightTimeL = 5
 greenLightTimeR = 4
-vehiclesL = 10
-vehiclesR = 10
+vehiclesL = 19
+vehiclesR = 19
