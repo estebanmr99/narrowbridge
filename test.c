@@ -8,7 +8,7 @@
 
 #define T 500
 #define lock pthread_mutex_lock
-#define unlock pthread_mutex_unlock 
+#define unlock pthread_mutex_unlock
 
 int bridgeLen;
 int expAverageL,expAverageR;
@@ -29,7 +29,7 @@ pthread_cond_t isSafeRcon;
 //---------------------------------------------------------------------------------------------------------------------------------------
 void *vehicleRtoL(void *args){
     printf("Vehiculo %lu creado.... derecha\n", pthread_self());
-    
+
     ++vehiculeQueueR;
     int soynumero = vehiculeQueueR;
     int isAmb = rand() % 100;
@@ -59,7 +59,7 @@ void *vehicleRtoL(void *args){
             unlock(&bridge[bridgeLen - 1]);
         }
     }
-    
+
     --vehiculeQueueR;
     isSafeR = 1;
     printf("avanza derecha\n");
@@ -74,14 +74,14 @@ void *vehicleRtoL(void *args){
         }
         if (i == (bridgeLen - 2)){
             pthread_cond_signal(&isSafeRcon);
-        } 
+        }
         printf("V %lu en pos %d derecha\n",pthread_self(),i);
         sleep(vehicleVelocityR);
         unlock(&bridge[i]);
     }
-    
+
     --vehiculesOnBridge;
-    
+
     if(ambulanceR && (!isSafeR || vehiculeQueueR == 0) && vehiculesOnBridge == 0){
         ambulanceR = 0;
         isSafeR = 0;
@@ -97,7 +97,7 @@ void *vehicleRtoL(void *args){
 //---------------------------------------------------------------------------------------------------------------------------------------
 void *vehicleLtoR(void *args){
     printf("Vehiculo %lu creado....\n", pthread_self());
-    
+
     ++vehiculeQueueL;
     int soynumero = vehiculeQueueL;
     int isAmb = rand() % 100;
@@ -128,7 +128,7 @@ void *vehicleLtoR(void *args){
         }
     }
 
-    --vehiculeQueueL;    
+    --vehiculeQueueL;
     isSafeL = 1;
     printf("avanza\n");
 
@@ -147,9 +147,9 @@ void *vehicleLtoR(void *args){
         sleep(vehicleVelocityL);
         unlock(&bridge[i]);
     }
-    
+
     --vehiculesOnBridge;
-    
+
     if(ambulanceL && (!isSafeL || vehiculeQueueL == 0) && vehiculesOnBridge == 0){
         ambulanceL = 0;
         isSafeL = 0;
@@ -169,7 +169,7 @@ void *createVehiculeR(void *args){
         sleep(time);
         pthread_create(&vehiclesPR[i],NULL,vehicleRtoL,NULL);
     }
-    
+
     for(int i=0;i<vehiclesR;i++){
       pthread_join(vehiclesPR[i],NULL);
     }
@@ -197,7 +197,7 @@ void *carnage(void *args){
 
     pthread_t createVehiculeRThread;
     pthread_t createVehiculeLThread;
-    
+
     pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);
     pthread_create(&createVehiculeLThread,NULL,createVehiculeL,NULL);
 
@@ -278,44 +278,14 @@ int main(){
 
     readConfiguration();
 
-    /*
-    //////////// MENU QUE PODEMOS USAR ////////////
-
-    int option;
-
-    printf("\n                   NarrowBridge\n");
-    printf("\n");
-    printf("Escoja el modo a ejecutar:\n");
-    printf("\n");
-    printf("1) Carnage.\n");
-    printf("2) Semaforos.\n");
-    printf("3) Oficiales de transito.\n");
-    printf("\n");
-    printf("-> ");
-    scanf("%d", &option);
-
-    if (option == 1){
-        //correr carnage
-    }
-    else if (option == 2){
-        //correr semaforos
-    }
-    else if (option == 3){
-        //correr oficiales de transito
-    }
-    else{
-        printf("\nOpcion invalida\n");
-    }
-    //////////////////////////////////////////////
-    */
 
     srand(time(NULL));   // Initialization, should only be called once.
-  
+
     bridge = (pthread_mutex_t*) malloc(bridgeLen*sizeof(pthread_mutex_t));
     //condtitions = (pthread_cond_t*) malloc(bridgeLen*sizeof(pthread_cond_t));
     isSafeR = 0;
     isSafeL = 0;
-    
+
     pthread_cond_init(&isSafeLcon,NULL);
     pthread_cond_init(&isSafeRcon,NULL);
 
@@ -334,11 +304,37 @@ int main(){
 
     vehiculesOnBridge = 0;
 
-    pthread_t carnageThread;
-    
-    pthread_create(&carnageThread,NULL,carnage,NULL);
+    int option;
 
-    pthread_join(carnageThread,NULL);
+    printf("\n                   NarrowBridge\n");
+    printf("\n");
+    printf("Escoja el modo a ejecutar:\n");
+    printf("\n");
+    printf("1) Carnage.\n");
+    printf("2) Semaforos.\n");
+    printf("3) Oficiales de transito.\n");
+    printf("\n");
+    printf("-> ");
+    scanf("%d", &option);
+
+    if (option == 1){
+
+      printf("\n");
+      pthread_t carnageThread;
+
+      pthread_create(&carnageThread,NULL,carnage,NULL);
+
+      pthread_join(carnageThread,NULL);
+    }
+    else if (option == 2){
+      printf("\nProximamente...\n");
+    }
+    else if (option == 3){
+      printf("\nProximamente...\n");
+    }
+    else{
+      printf("\nOpcion invalida\n");
+    }
 
     pthread_exit(0);
 
