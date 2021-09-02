@@ -12,7 +12,8 @@
 
 int bridgeLen;
 int expAverageL,expAverageR;
-int vehicleVelocityL,vehicleVelocityR;
+int vehicleVelocityInfL,vehicleVelocityInfR;
+int vehicleVelocitySupL,vehicleVelocitySupR;
 int K1,K2;
 int greenLightTimeL,greenLightTimeR;
 int vehiclesL,vehiclesR;
@@ -33,6 +34,7 @@ void *vehicleRtoL(void *args){
     ++vehiculeQueueR;
     int soynumero = vehiculeQueueR;
     int isAmb = rand() % 100;
+    int velocity = (rand() % (vehicleVelocitySupR + 1 - vehicleVelocityInfR)) + vehicleVelocityInfR;
 
     if (isAmb <= 5){
         printf("Vehiculo %lu es una ambulancia derecha\n", pthread_self());
@@ -76,7 +78,7 @@ void *vehicleRtoL(void *args){
             pthread_cond_signal(&isSafeRcon);
         }
         printf("V %lu en pos %d derecha\n",pthread_self(),i);
-        sleep(vehicleVelocityR);
+        sleep(velocity);
         unlock(&bridge[i]);
     }
 
@@ -101,6 +103,7 @@ void *vehicleLtoR(void *args){
     ++vehiculeQueueL;
     int soynumero = vehiculeQueueL;
     int isAmb = rand() % 100;
+    int velocity = (rand() % (vehicleVelocitySupL + 1 - vehicleVelocityInfL)) + vehicleVelocityInfL;
 
     if (isAmb <= 5){
         printf("Vehiculo %lu es una ambulancia\n", pthread_self());
@@ -144,7 +147,7 @@ void *vehicleLtoR(void *args){
             pthread_cond_signal(&isSafeLcon);
         }
         printf("V %lu en pos %d\n",pthread_self(),i);
-        sleep(vehicleVelocityL);
+        sleep(velocity);
         unlock(&bridge[i]);
     }
 
@@ -233,12 +236,22 @@ void readConfiguration(){
     fgets(line, sizeof(line), file);
     strtok(line, s);
     token = strtok(NULL, s);
-    vehicleVelocityL = atoi(token);
+    vehicleVelocityInfL = atoi(token);
 
     fgets(line, sizeof(line), file);
     strtok(line, s);
     token = strtok(NULL, s);
-    vehicleVelocityR = atoi(token);
+    vehicleVelocityInfR = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    vehicleVelocitySupL = atoi(token);
+
+    fgets(line, sizeof(line), file);
+    strtok(line, s);
+    token = strtok(NULL, s);
+    vehicleVelocitySupR = atoi(token);
 
     fgets(line, sizeof(line), file);
     strtok(line, s);
@@ -275,14 +288,11 @@ void readConfiguration(){
 
 //---------------------------------------------------------------------------------------------------------------------------------------
 int main(){
-
     readConfiguration();
-
 
     srand(time(NULL));   // Initialization, should only be called once.
 
     bridge = (pthread_mutex_t*) malloc(bridgeLen*sizeof(pthread_mutex_t));
-    //condtitions = (pthread_cond_t*) malloc(bridgeLen*sizeof(pthread_cond_t));
     isSafeR = 0;
     isSafeL = 0;
 
