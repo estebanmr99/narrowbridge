@@ -19,158 +19,129 @@ int greenLightTimeL,greenLightTimeR;
 int vehiclesL,vehiclesR;
 int isSafeL, isSafeR;
 int ambulanceL, ambulanceR;
-int vehiculesOnBridge;
-int vehiculeQueueL, vehiculeQueueR;
+int vehiclesOnBridge;
+int vehicleQuantityL, vehicleQuantityR;
+int bridgeDir;
+int mode;
 pthread_t *vehiclesPL;
 pthread_t *vehiclesPR;
 pthread_mutex_t *bridge;
 pthread_cond_t isSafeLcon;
 pthread_cond_t isSafeRcon;
 
-//---------------------------------------------------------------------------------------------------------------------------------------
-void *vehicleRtoL(void *args){
-    printf("Vehiculo %lu creado.... derecha\n", pthread_self());
+void crossBridge(int dir, int vel, unsigned long int id){
+    ++vehiclesOnBridge;
+    int start = dir == 1 ? 0 : bridgeLen - 1; 
+    int end = dir == -1 ? -1 : bridgeLen;
 
-    ++vehiculeQueueR;
-    int soynumero = vehiculeQueueR;
-    int isAmb = rand() % 100;
-    int velocity = (rand() % (vehicleVelocitySupR + 1 - vehicleVelocityInfR)) + vehicleVelocityInfR;
-
-    if (isAmb <= 5){
-        printf("Vehiculo %lu es una ambulancia derecha\n", pthread_self());
-        if (vehiculeQueueR == 1){
-            ambulanceR = 1;
-            isSafeL = 0;
-        }
-    }
-
-    if(vehiculesOnBridge == 0){
-        isSafeR = 1;
-        isSafeL = 0;
-    }
-
-    while(ambulanceL || !isSafeR){ //se maneja por la funcion que administra el puente, 0 no es seguro, 1 es seguro
-        isSafeR = 0;
-        if(vehiculesOnBridge == 0){
-            isSafeR = 1;
-        }
-        if(soynumero > 1){
-            lock(&bridge[bridgeLen - 1]);
-            pthread_cond_wait(&isSafeRcon, &bridge[bridgeLen - 1]);
-            soynumero--;
-            unlock(&bridge[bridgeLen - 1]);
-        }
-    }
-
-    --vehiculeQueueR;
-    isSafeR = 1;
-    printf("avanza derecha\n");
-
-    for(int i = bridgeLen - 1; i >= 0; i--){
+    lock(&bridge[start]);
+    printf("V %lu en pos %d en la direccion: %d\n", id, start, dir);
+    for(int i = start + dir; i != end; i += dir){
+        printf("V %lu en pos %d en la direccion: %d\n", id, i, dir);
+        sleep(vel);
         lock(&bridge[i]);
-        if (i == bridgeLen - 1) ++vehiculesOnBridge;
-        while(ambulanceL && i == bridgeLen - 1){
-            --vehiculesOnBridge;
-            unlock(&bridge[i]);
-            pthread_cond_wait(&isSafeRcon, &bridge[i]);
-        }
-        if (i == (bridgeLen - 2)){
-            pthread_cond_signal(&isSafeRcon);
-        }
-        printf("V %lu en pos %d derecha\n",pthread_self(),i);
-        sleep(velocity);
-        unlock(&bridge[i]);
+        unlock(&bridge[i - dir]);
     }
-
-    --vehiculesOnBridge;
-
-    if(ambulanceR && (!isSafeR || vehiculeQueueR == 0) && vehiculesOnBridge == 0){
-        ambulanceR = 0;
-        isSafeR = 0;
-        pthread_cond_signal(&isSafeLcon);
-    }
-
-    printf("Vehiculo %lu salio.... derecha\n",pthread_self());
-    printf("--------------- Vehiculos en el puente %d\n", vehiculesOnBridge);
-
-    pthread_exit(0);
+    unlock(&bridge[end - dir]);
+    --vehiclesOnBridge;
 }
 
-//---------------------------------------------------------------------------------------------------------------------------------------
-void *vehicleLtoR(void *args){
-    printf("Vehiculo %lu creado....\n", pthread_self());
+void leavingBridgeCarnage(int dir){
+    if(((dir == 1) || vehicleQuantityR == 0) && vehiclesOnBridge == 0){
+        if (ambulanceR){
+            ambulanceR = 0;
+        }
+        bridgeDir = 1;
+        pthread_cond_broadcast(&isSafeRcon);
+    }
 
-    ++vehiculeQueueL;
-    int soynumero = vehiculeQueueL;
+    if(((dir == -1) || vehicleQuantityL == 0) && vehiclesOnBridge == 0){
+        if (ambulanceL){
+            ambulanceL = 0;
+        }
+        bridgeDir = -1;
+        pthread_cond_broadcast(&isSafeLcon);
+    }
+}
+
+int isSafeCarnage(int dir){
+
+    if(vehiclesOnBridge == 0){
+        bridgeDir = dir;
+    }
+
+    if(dir == bridgeDir){
+        if((dir == 1) && !ambulanceR){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
+            return 1;
+        }else if((dir == -1) && !ambulanceL){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
+            return 1;
+        }
+        
+        return 0;
+    }else{
+        return 0;
+    }
+}
+
+
+void *vehicle(void *direction){
+    int dir = *(int *)direction;
+
+    printf("Vehiculo %lu creado.... %d\n", pthread_self(), dir);
+
+    dir == 1 ? ++vehicleQuantityL : ++vehicleQuantityR;
+    int position = dir == 1 ? vehicleQuantityL : vehicleQuantityR;
     int isAmb = rand() % 100;
-    int velocity = (rand() % (vehicleVelocitySupL + 1 - vehicleVelocityInfL)) + vehicleVelocityInfL;
+    int velocity = rand() % ((vehicleVelocitySupR - vehicleVelocityInfR) + 1) + vehicleVelocityInfR; // validar la direccion
+    int ambulance;
+    velocity = T / velocity;
 
     if (isAmb <= 5){
-        printf("Vehiculo %lu es una ambulancia\n", pthread_self());
-        if (vehiculeQueueL == 1){
-            ambulanceL = 1;
-            isSafeR = 0;
+        ambulance = 1;
+        printf("Vehiculo %lu es una ambulancia de lado: %d\n", pthread_self(), dir);
+        if (position){
+            ambulanceL = dir == 1 ? 1 : ambulanceL;
+            ambulanceR = dir == -1 ? 1 : ambulanceR;
+            bridgeDir = dir;
         }
     }
 
-    if(vehiculesOnBridge == 0){
-        isSafeL = 1;
-        isSafeR = 0;
+    int isSafe = isSafeCarnage(dir);
+
+    while (!isSafe){
+        int posLock = dir == 1 ? 0 : bridgeLen - 1; 
+
+        lock(&bridge[posLock]);
+        if (dir == 1){
+            pthread_cond_wait(&isSafeLcon, &bridge[posLock]);
+        }else{
+            pthread_cond_wait(&isSafeRcon, &bridge[posLock]);
+        }
+        unlock(&bridge[posLock]);
+
+        isSafe = isSafeCarnage(dir);
     }
 
-    while(ambulanceR || !isSafeL){ //se maneja por la funcion que administra el puente, 0 no es seguro, 1 es seguro
-        isSafeL = 0;
-        if(vehiculesOnBridge == 0){
-            isSafeL = 1;
-        }
-        if(soynumero > 1){
-            lock(&bridge[0]);
-            pthread_cond_wait(&isSafeLcon, &bridge[0]);
-            soynumero--;
-            unlock(&bridge[0]);
-        }
-    }
+    dir == 1 ? --vehicleQuantityL : --vehicleQuantityR;
 
-    --vehiculeQueueL;
-    isSafeL = 1;
-    printf("avanza\n");
+    printf("avanza %d\n", dir);
 
-    for(int i = 0; i < bridgeLen; i++){
-        lock(&bridge[i]);
-        if (i == 0) ++vehiculesOnBridge;
-        while(ambulanceR && i == 0){
-            --vehiculesOnBridge;
-            unlock(&bridge[i]);
-            pthread_cond_wait(&isSafeLcon, &bridge[i]);
-        }
-        if (i == 1) {
-            pthread_cond_signal(&isSafeLcon);
-        }
-        printf("V %lu en pos %d\n",pthread_self(),i);
-        sleep(velocity);
-        unlock(&bridge[i]);
-    }
+    crossBridge(dir, velocity, pthread_self());
 
-    --vehiculesOnBridge;
+    leavingBridgeCarnage(dir);
 
-    if(ambulanceL && (!isSafeL || vehiculeQueueL == 0) && vehiculesOnBridge == 0){
-        ambulanceL = 0;
-        isSafeL = 0;
-        pthread_cond_signal(&isSafeRcon);
-    }
+    printf("Vehiculo %lu salio.... %d\n",pthread_self(), dir);
+    printf("--------------- Vehiculos en el puente %d\n", vehiclesOnBridge);
 
-    printf("Vehiculo %lu salio....\n",pthread_self());
-    printf("---------------Vehiculos en el puente %d\n", vehiculesOnBridge);
-
-    pthread_exit(0);
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------
 void *createVehiculeR(void *args){
+    int dir = -1;
     for(int i=0;i<vehiclesR;i++){
         int time =  (-1 * expAverageR) * log(1 - (double)rand() / (double)RAND_MAX);
         sleep(time);
-        pthread_create(&vehiclesPR[i],NULL,vehicleRtoL,NULL);
+        pthread_create(&vehiclesPR[i],NULL,vehicle,&dir);
     }
 
     for(int i=0;i<vehiclesR;i++){
@@ -183,9 +154,10 @@ void *createVehiculeR(void *args){
 //---------------------------------------------------------------------------------------------------------------------------------------
 void *createVehiculeL(){
     for(int i=0;i<vehiclesL;i++){
+        int dir = 1;
         int time =  (-1 * expAverageL) * log(1 - (double)rand() / (double)RAND_MAX);
         sleep(time);
-        pthread_create(&vehiclesPL[i],NULL,vehicleLtoR,NULL);
+        pthread_create(&vehiclesPL[i],NULL,vehicle,&dir);
     }
 
     for(int i=0;i<vehiclesL;i++){
@@ -309,12 +281,12 @@ int main(){
     ambulanceR = 0;
     ambulanceL = 0;
 
-    vehiculeQueueL = 0;
-    vehiculeQueueR = 0;
+    vehicleQuantityL = 0;
+    vehicleQuantityR = 0;
 
-    vehiculesOnBridge = 0;
+    vehiclesOnBridge = 0;
 
-    int option;
+    bridgeDir = 0;
 
     printf("\n                   NarrowBridge\n");
     printf("\n");
@@ -325,9 +297,9 @@ int main(){
     printf("3) Oficiales de transito.\n");
     printf("\n");
     printf("-> ");
-    scanf("%d", &option);
+    scanf("%d", &mode);
 
-    if (option == 1){
+    if (mode == 1){
 
       printf("\n");
       pthread_t carnageThread;
@@ -336,10 +308,10 @@ int main(){
 
       pthread_join(carnageThread,NULL);
     }
-    else if (option == 2){
+    else if (mode == 2){
       printf("\nProximamente...\n");
     }
-    else if (option == 3){
+    else if (mode == 3){
       printf("\nProximamente...\n");
     }
     else{
