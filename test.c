@@ -30,11 +30,11 @@ pthread_cond_t isSafeLcon;
 pthread_cond_t isSafeRcon;
 
 void crossBridge(int dir, int vel, unsigned long int id){
-    ++vehiclesOnBridge;
     int start = dir == 1 ? 0 : bridgeLen - 1; 
     int end = dir == -1 ? -1 : bridgeLen;
 
     lock(&bridge[start]);
+    ++vehiclesOnBridge;
     printf("V %lu en pos %d en la direccion: %d\n", id, start, dir);
     for(int i = start + dir; i != end; i += dir){
         printf("V %lu en pos %d en la direccion: %d\n", id, i, dir);
@@ -44,23 +44,22 @@ void crossBridge(int dir, int vel, unsigned long int id){
     }
     unlock(&bridge[end - dir]);
     --vehiclesOnBridge;
+
+    printf("Vehiculo %lu salio.... %d\n",id, dir);
+    printf("--------------- Vehiculos en el puente %d\n", vehiclesOnBridge);
 }
 
 void leavingBridgeCarnage(int dir){
-    if(((dir == 1) || vehicleQuantityR == 0) && vehiclesOnBridge == 0){
+    if(((dir == -1) || vehicleQuantityR == 0) && vehiclesOnBridge == 0){
         if (ambulanceR){
             ambulanceR = 0;
         }
-        bridgeDir = 1;
-        pthread_cond_broadcast(&isSafeRcon);
-    }
-
-    if(((dir == -1) || vehicleQuantityL == 0) && vehiclesOnBridge == 0){
+        pthread_cond_broadcast(&isSafeLcon);
+    }else if(((dir == 1) || vehicleQuantityL == 0) && vehiclesOnBridge == 0){
         if (ambulanceL){
             ambulanceL = 0;
         }
-        bridgeDir = -1;
-        pthread_cond_broadcast(&isSafeLcon);
+        pthread_cond_broadcast(&isSafeRcon);
     }
 }
 
@@ -89,20 +88,29 @@ void *vehicle(void *direction){
 
     printf("Vehiculo %lu creado.... %d\n", pthread_self(), dir);
 
-    dir == 1 ? ++vehicleQuantityL : ++vehicleQuantityR;
+    if (dir == 1){
+        ++vehicleQuantityL;
+    }else{
+        ++vehicleQuantityR;
+    }
     int position = dir == 1 ? vehicleQuantityL : vehicleQuantityR;
     int isAmb = rand() % 100;
-    int velocity = rand() % ((vehicleVelocitySupR - vehicleVelocityInfR) + 1) + vehicleVelocityInfR; // validar la direccion
+    int velocity = 0;
+    if (dir == -1){
+        velocity = rand() % ((vehicleVelocitySupR - vehicleVelocityInfR) + 1) + vehicleVelocityInfR; // validar la direccion
+    }else{
+        velocity = rand() % ((vehicleVelocitySupL - vehicleVelocityInfL) + 1) + vehicleVelocityInfL; // validar la direccion
+    }
     int ambulance;
     velocity = T / velocity;
 
     if (isAmb <= 5){
         ambulance = 1;
         printf("Vehiculo %lu es una ambulancia de lado: %d\n", pthread_self(), dir);
-        if (position){
+        if (position == 1){
+            printf("La ambulancia esta en la posicion: %d", position);
             ambulanceL = dir == 1 ? 1 : ambulanceL;
             ambulanceR = dir == -1 ? 1 : ambulanceR;
-            bridgeDir = dir;
         }
     }
 
@@ -122,16 +130,17 @@ void *vehicle(void *direction){
         isSafe = isSafeCarnage(dir);
     }
 
-    dir == 1 ? --vehicleQuantityL : --vehicleQuantityR;
+    if (dir == 1){
+        --vehicleQuantityL;
+    }else{
+        --vehicleQuantityR;
+    }
 
     printf("avanza %d\n", dir);
 
     crossBridge(dir, velocity, pthread_self());
 
     leavingBridgeCarnage(dir);
-
-    printf("Vehiculo %lu salio.... %d\n",pthread_self(), dir);
-    printf("--------------- Vehiculos en el puente %d\n", vehiclesOnBridge);
 
 }
 

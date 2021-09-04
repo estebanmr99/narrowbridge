@@ -1,6 +1,6 @@
 bridgeLen = 9
-expAverageL = 3
-expAverageR = 3
+expAverageL = 2
+expAverageR = 2
 vehicleVelocityInfL = 180
 vehicleVelocityInfR = 180
 vehicleVelocitySupL = 280
@@ -9,5 +9,5 @@ K1 = 6
 K2 = 5
 greenLightTimeL = 5
 greenLightTimeR = 4
-vehiclesL = 5
-vehiclesR = 5
+vehiclesL = 19
+vehiclesR = 19
