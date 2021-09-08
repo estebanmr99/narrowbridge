@@ -316,19 +316,19 @@ void *trafficPolice(void *args){
 //---------------------------------------------------------------------------------------------------------------------------------------
 void *semaphoreChange(void *args) {
     // TODO: funcionalidad de cambio de semaforo
-    while (totalVehicles) {
+    while (1) {
 
       bridgeDir = 1;
-      if (vehiclesOnBridge == 0) {
-        pthread_cond_broadcast(&isSafeLcon);
-      }
+      // if (vehiclesOnBridge == 0) {
+      //   pthread_cond_broadcast(&isSafeLcon);
+      // }
       printf("\nSemaforo izquierdo en verde\n\n");
       sleep(greenLightTimeL);
 
       bridgeDir = -1;
-      if (vehiclesOnBridge == 0) {
-        pthread_cond_broadcast(&isSafeRcon);
-      }
+      // if (vehiclesOnBridge == 0) {
+      //   pthread_cond_broadcast(&isSafeRcon);
+      // }
       printf("\nSemaforo derecho en verde\n\n");
       sleep(greenLightTimeR);
     }
