@@ -18,6 +18,7 @@ int K1,K2;
 int K1Temp,K2Temp;
 int greenLightTimeL,greenLightTimeR;
 int vehiclesL,vehiclesR;
+int totalVehicles;
 int isSafeL, isSafeR;
 int ambulanceL, ambulanceR;
 int vehiclesOnBridge;
@@ -31,7 +32,7 @@ pthread_cond_t isSafeLcon;
 pthread_cond_t isSafeRcon;
 
 void crossBridge(int dir, int vel, unsigned long int id){
-    int start = dir == 1 ? 0 : bridgeLen - 1; 
+    int start = dir == 1 ? 0 : bridgeLen - 1;
     int end = dir == -1 ? -1 : bridgeLen;
 
     lock(&bridge[start]);
@@ -45,7 +46,7 @@ void crossBridge(int dir, int vel, unsigned long int id){
     }
     unlock(&bridge[end - dir]);
     --vehiclesOnBridge;
-    
+    --totalVehicles;
     printf("Vehiculo %lu salio.... %d\n --------------- Vehiculos en el puente %d\n", pthread_self(), dir, vehiclesOnBridge);
 }
 
@@ -95,6 +96,21 @@ void leavingBridgeTrafficPolice(int dir){
     }
 }
 
+void leavingBridgeSemaphore(int dir) {
+    // TODO: dar paso al otro lado cuando salga el ultimo
+    if(dir == -1 && vehiclesOnBridge == 0 && bridgeDir == 1){
+        if (ambulanceR){
+            ambulanceR = 0;
+        }
+        pthread_cond_broadcast(&isSafeLcon);
+    }else if(dir == 1 && vehiclesOnBridge == 0 && bridgeDir == -1){
+        if (ambulanceL){
+            ambulanceL = 0;
+        }
+        pthread_cond_broadcast(&isSafeRcon);
+    }
+}
+
 int isSafeCarnage(int dir){
     if(vehiclesOnBridge == 0){
         bridgeDir = dir;
@@ -106,7 +122,7 @@ int isSafeCarnage(int dir){
         }else if((dir == -1) && !ambulanceL){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
             return 1;
         }
-        
+
         return 0;
     }else{
         return 0;
@@ -129,10 +145,25 @@ int isSafeTrafficPolice(int dir, int ambulance, int position){
             --K2Temp;
             return 1;
         }else if(ambulance && position == 1){
-            if((dir == 1 && K1Temp == 0 && vehiclesOnBridge > 0) || (dir == -1 && K2Temp == 0 && vehiclesOnBridge > 0)){ 
+            if((dir == 1 && K1Temp == 0 && vehiclesOnBridge > 0) || (dir == -1 && K2Temp == 0 && vehiclesOnBridge > 0)){
                 return 1;
             }
         }
+        return 0;
+    }else{
+        return 0;
+    }
+}
+
+int isSafeSemaphore(int dir){
+    // TODO: revisar direccion y ambulancias
+    if(dir == bridgeDir && vehiclesOnBridge == 0){
+        if((dir == 1) && !ambulanceR){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
+            return 1;
+        }else if((dir == -1) && !ambulanceL){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
+            return 1;
+        }
+
         return 0;
     }else{
         return 0;
@@ -173,13 +204,13 @@ void *vehicle(void *direction){
     if (mode == 1){
         isSafe = isSafeCarnage(dir);
     }else if (mode == 2){
-        isSafe = 0;
+        isSafe = isSafeSemaphore(dir);
     }else if (mode == 3){
         isSafe = isSafeTrafficPolice(dir, ambulance, position);
     }
 
     while (!isSafe){
-        int posLock = dir == 1 ? 0 : bridgeLen - 1; 
+        int posLock = dir == 1 ? 0 : bridgeLen - 1;
 
         lock(&bridge[posLock]);
         if (dir == 1){
@@ -194,7 +225,7 @@ void *vehicle(void *direction){
         if (mode == 1){
             isSafe = isSafeCarnage(dir);
         }else if (mode == 2){
-            isSafe = 0;
+            isSafe = isSafeSemaphore(dir);
         }else if (mode == 3){
             isSafe = isSafeTrafficPolice(dir, ambulance, position);
         }
@@ -211,7 +242,7 @@ void *vehicle(void *direction){
     if (mode == 1){
         leavingBridgeCarnage(dir);
     }else if (mode == 2){
-        isSafe = 0;
+        leavingBridgeSemaphore(dir);
     }else if (mode == 3){
         leavingBridgeTrafficPolice(dir);
     }
@@ -273,6 +304,48 @@ void *trafficPolice(void *args){
     K1Temp = K1;
     K2Temp = K2;
 
+    pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);
+    pthread_create(&createVehiculeLThread,NULL,createVehiculeL,NULL);
+
+    pthread_join(createVehiculeRThread,NULL);
+    pthread_join(createVehiculeLThread,NULL);
+
+    pthread_exit(0);
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------
+void *semaphoreChange(void *args) {
+    // TODO: funcionalidad de cambio de semaforo
+    while (totalVehicles) {
+
+      bridgeDir = 1;
+      if (vehiclesOnBridge == 0) {
+        pthread_cond_broadcast(&isSafeLcon);
+      }
+      printf("\nSemaforo izquierdo en verde\n\n");
+      sleep(greenLightTimeL);
+
+      bridgeDir = -1;
+      if (vehiclesOnBridge == 0) {
+        pthread_cond_broadcast(&isSafeRcon);
+      }
+      printf("\nSemaforo derecho en verde\n\n");
+      sleep(greenLightTimeR);
+    }
+
+    pthread_exit(0);
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------
+void *semaphore(void *args) {
+
+    pthread_t createVehiculeRThread;
+    pthread_t createVehiculeLThread;
+    pthread_t createSemaphoreChangeThread;
+
+    totalVehicles = vehiclesL + vehiclesR;
+
+    pthread_create(&createSemaphoreChangeThread,NULL,semaphoreChange,NULL);
     pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);
     pthread_create(&createVehiculeLThread,NULL,createVehiculeL,NULL);
 
@@ -408,7 +481,12 @@ int main(){
         pthread_join(carnageThread,NULL);
     }
     else if (mode == 2){
-        printf("\nProximamente...\n");
+        printf("\n");
+        pthread_t semaphoreThread;
+
+        pthread_create(&semaphoreThread,NULL,semaphore,NULL);
+
+        pthread_join(semaphoreThread,NULL);
     }
     else if (mode == 3){
         printf("\n");
