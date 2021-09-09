@@ -1,6 +1,6 @@
 bridgeLen = 4
-expAverageL = 2
-expAverageR = 2
+expAverageL = 3
+expAverageR = 4
 vehicleVelocityInfL = 180
 vehicleVelocityInfR = 180
 vehicleVelocitySupL = 280

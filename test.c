@@ -24,6 +24,7 @@ int vehicleQuantityL, vehicleQuantityR; // Variables pasan cambiando
 int bridgeDir; // Variable pasan cambiando
 int mode;
 int bridgeDirReal; // Variable pasan cambiando
+int firstCar;
 pthread_t *vehiclesPL;
 pthread_t *vehiclesPR;
 pthread_mutex_t *bridge;
@@ -97,19 +98,25 @@ void leavingBridgeTrafficPolice(int dir){
 
 void leavingBridgeSemaphore(int dir) {
     // TODO: dar paso al otro lado cuando salga el ultimo
-    if(dir == -1 && vehiclesOnBridge == 0 && bridgeDir == 1){
+    if(dir == -1 && vehiclesOnBridge == 0){
         if (ambulanceR){
             lock(&ambulanceRMutex);
             ambulanceR = 0;
             unlock(&ambulanceRMutex);
         }
+        lock(&bridgeDirRealMutex);
+        bridgeDirReal *= -1;
+        unlock(&bridgeDirRealMutex);
         pthread_cond_broadcast(&isSafeLcon);
-    }else if(dir == 1 && vehiclesOnBridge == 0 && bridgeDir == -1){
+    }else if(dir == 1 && vehiclesOnBridge == 0){
         if (ambulanceL){
             lock(&ambulanceLMutex);
             ambulanceL = 0;
             unlock(&ambulanceLMutex);
         }
+        lock(&bridgeDirRealMutex);
+        bridgeDirReal *= -1;
+        unlock(&bridgeDirRealMutex);
         pthread_cond_broadcast(&isSafeRcon);
     }
 }
@@ -156,7 +163,7 @@ int isSafeTrafficPolice(int dir, int ambulance, int position){
 
 int isSafeSemaphore(int dir){
     // TODO: revisar direccion y ambulancias
-    if(dir == bridgeDir && vehiclesOnBridge == 0){
+    if(dir == bridgeDir && dir == bridgeDirReal){
         if((dir == 1) && !ambulanceR){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
             return 1;
         }else if((dir == -1) && !ambulanceL){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
@@ -171,8 +178,14 @@ int isSafeSemaphore(int dir){
 
 void *vehicle(void *direction){
     int dir = *(int *)direction;
-
     printf("Vehiculo %lu creado.... %d\n", pthread_self(), dir);
+
+    if(!firstCar){
+        firstCar = 1;
+        lock(&bridgeDirRealMutex);
+        bridgeDirReal = dir;
+        unlock(&bridgeDirRealMutex);
+    }
 
     if (dir == 1){
         lock(&vehicleQuantityLMutex);
@@ -406,20 +419,23 @@ void *semaphoreChange(void *args) {
         lock(&bridgeDirMutex);
         bridgeDir = 1;
         unlock(&bridgeDirMutex);
-      // if (vehiclesOnBridge == 0) {
-      //   pthread_cond_broadcast(&isSafeLcon);
-      // }
-      printf("\nSemaforo izquierdo en verde\n\n");
-      sleep(greenLightTimeL);
+        
+        printf("\nSemaforo izquierdo en verde\n\n");
+        if (vehiclesOnBridge == 0) {
+            pthread_cond_broadcast(&isSafeLcon);
+        }
+        sleep(greenLightTimeL);
 
-      lock(&bridgeDirMutex);    
-      bridgeDir = -1;
-      unlock(&bridgeDirMutex);
-      // if (vehiclesOnBridge == 0) {
-      //   pthread_cond_broadcast(&isSafeRcon);
-      // }
-      printf("\nSemaforo derecho en verde\n\n");
-      sleep(greenLightTimeR);
+
+        lock(&bridgeDirMutex);    
+        bridgeDir = -1;
+        unlock(&bridgeDirMutex);
+        
+        printf("\nSemaforo derecho en verde\n\n");
+        if (vehiclesOnBridge == 0) {
+            pthread_cond_broadcast(&isSafeRcon);
+        }
+        sleep(greenLightTimeR);
     }
 
     pthread_exit(0);
@@ -553,6 +569,7 @@ int main(){
     vehiclesOnBridge = 0;
 
     bridgeDir = 0;
+    firstCar = 0;
 
     printf("\n                   NarrowBridge\n");
     printf("\n");
@@ -580,6 +597,7 @@ int main(){
         pthread_create(&semaphoreThread,NULL,semaphore,NULL);
 
         pthread_join(semaphoreThread,NULL);
+        printf("sale semaforo");
     }
     else if (mode == 3){
         printf("\n");
