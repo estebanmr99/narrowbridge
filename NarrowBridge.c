@@ -18,19 +18,21 @@ int K1,K2;
 int K1Temp,K2Temp; // Variables pasan cambiando
 int greenLightTimeL,greenLightTimeR;
 int vehiclesL,vehiclesR;
-int vehiclesLCounter,vehiclesRCounter;
+int totalVehicles;  // Variable pasa cambiando
+int vehiclesLCounter,vehiclesRCounter;  // Variables pasan cambiando
 int ambulanceL, ambulanceR; // Variables pasan cambiando
-int vehiclesOnBridge; // Variable pasan cambiando
+int vehiclesOnBridge; // Variable pasa cambiando
 int vehicleQuantityL, vehicleQuantityR; // Variables pasan cambiando
-int bridgeDir; // Variable pasan cambiando
+int bridgeDir; // Variable pasa cambiando
 int mode;
-int bridgeDirReal; // Variable pasan cambiando
+int bridgeDirReal; // Variable pasa cambiando
 int firstCar;
 pthread_t *vehiclesPL;
 pthread_t *vehiclesPR;
 pthread_mutex_t *bridge;
 pthread_mutex_t policeLeftMutex, policeRightMutex;
 pthread_mutex_t K1TempMutex, K2TempMutex;
+pthread_mutex_t totalVehiclesMutex;
 pthread_mutex_t vehiclesLCounterMutex, vehiclesRCounterMutex;
 pthread_mutex_t ambulanceLMutex, ambulanceRMutex;
 pthread_mutex_t vehiclesOnBridgeMutex;
@@ -68,8 +70,12 @@ void crossBridge(int dir, int vel, unsigned long int id){
         lock(&vehiclesRCounterMutex);
         --vehiclesRCounter;
         unlock(&vehiclesRCounterMutex);
+    } else if (mode == 2) {
+        lock(&totalVehiclesMutex);
+        --totalVehicles;
+        unlock(&totalVehiclesMutex);
     }
-    
+
     printf("Vehiculo %lu salio.... %d\n --------------- Vehiculos en el puente %d\n", pthread_self(), dir, vehiclesOnBridge);
 }
 
@@ -106,15 +112,14 @@ void leavingBridgeTrafficPolice(int dir){
         pthread_cond_signal(&policeRightCond);
     }
 }
-
+// Funcion para el ultimo vehiculo que deja el puente
 void leavingBridgeSemaphore(int dir) {
-    // TODO: dar paso al otro lado cuando salga el ultimo
-    if(dir == -1 && vehiclesOnBridge == 0){
-        if (ambulanceR){
+    if(dir == -1 && vehiclesOnBridge == 0){ // Si soy el ultimo vehiculo hacia la izquierda
+        if (ambulanceR){                    // y soy una ambulancia
             lock(&ambulanceRMutex);
-            ambulanceR = 0;
+            ambulanceR = 0;                 // Apago bandera de ambulancia
             unlock(&ambulanceRMutex);
-            if(bridgeDir == dir){
+            if(bridgeDir == dir){           // Doy paso al lado que este en verde
                 pthread_cond_broadcast(&isSafeRcon);
             } else{
                 lock(&bridgeDirRealMutex);
@@ -124,16 +129,16 @@ void leavingBridgeSemaphore(int dir) {
             }
             return;
         }
-        lock(&bridgeDirRealMutex);
-        bridgeDirReal *= -1;
+        lock(&bridgeDirRealMutex);          // Si no soy una ambulancia
+        bridgeDirReal *= -1;                // doy paso al otro lado del puente
         unlock(&bridgeDirRealMutex);
         pthread_cond_broadcast(&isSafeLcon);
-    }else if(dir == 1 && vehiclesOnBridge == 0){
-        if (ambulanceL){
+    }else if(dir == 1 && vehiclesOnBridge == 0){ // Si soy el ultimo vehiculo hacia la derecha
+        if (ambulanceL){                         // y soy una ambulancia
             lock(&ambulanceLMutex);
-            ambulanceL = 0;
+            ambulanceL = 0;                      // Apago bandera de ambulancia
             unlock(&ambulanceLMutex);
-            if(bridgeDir == dir){
+            if(bridgeDir == dir){                // Doy paso al lado que este en verde
                 pthread_cond_broadcast(&isSafeLcon);
             } else{
                 lock(&bridgeDirRealMutex);
@@ -143,8 +148,8 @@ void leavingBridgeSemaphore(int dir) {
             }
             return;
         }
-        lock(&bridgeDirRealMutex);
-        bridgeDirReal *= -1;
+        lock(&bridgeDirRealMutex);            // Si no soy una ambulancia
+        bridgeDirReal *= -1;                  // doy paso al otro lado del puente
         unlock(&bridgeDirRealMutex);
         pthread_cond_broadcast(&isSafeRcon);
     }
@@ -184,7 +189,7 @@ int isSafeTrafficPolice(int dir, int ambulance, int position){
             unlock(&K2TempMutex);
             return 1;
         }else if(ambulance && position == 1){
-            if((dir == 1 && K1Temp == 0) || (dir == -1 && K2Temp == 0)){ 
+            if((dir == 1 && K1Temp == 0) || (dir == -1 && K2Temp == 0)){
                 return 1;
             }
         }
@@ -195,16 +200,15 @@ int isSafeTrafficPolice(int dir, int ambulance, int position){
 }
 
 int isSafeSemaphore(int dir, int ambulance){
-    // TODO: revisar direccion y ambulancias
-    if(dir == bridgeDirReal){
-        if(dir == bridgeDir){
-            if((dir == 1) && !ambulanceR){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
-                return 1;
-            }else if((dir == -1) && !ambulanceL){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
-                return 1;
+    if(dir == bridgeDirReal){   // Si no vienen carros en la direccion contraria
+        if(dir == bridgeDir){   // Si el semaforo esta en verde
+            if((dir == 1) && !ambulanceR){ // Si no hay ambulancias del otro lado
+                return 1;   // Puedo pasar
+            }else if((dir == -1) && !ambulanceL){ // Si no hay ambulancias del otro lado
+                return 1;   // Puedo pasar
             }
-        } else if(ambulance){
-            return 1;
+        } else if(ambulance){   // Si soy una ambulancia
+            return 1;   // Puedo pasar
         }
 
         return 0;
@@ -454,48 +458,51 @@ void *trafficPolice(void *args){
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------
+// Hilo para la funcionalidad de cambio de semaforo
 void *semaphoreChange(void *args) {
-    lock(&bridgeDirRealMutex);
+    lock(&bridgeDirRealMutex);  // Comienza la direccion del puente hacia la derecha
     bridgeDirReal = 1;
     unlock(&bridgeDirRealMutex);
 
-    // TODO: funcionalidad de cambio de semaforo
-    while (1) {
-        lock(&bridgeDirMutex);
+    while (totalVehicles) { // Mientras queden carros sin pasar
+        lock(&bridgeDirMutex);  // Pone el semaforo izquierdo en verde
         bridgeDir = 1;
         unlock(&bridgeDirMutex);
-        
+
         printf("\nSemaforo izquierdo en verde\n\n");
         if (vehiclesOnBridge == 0) {
-            pthread_cond_broadcast(&isSafeLcon);
+            pthread_cond_broadcast(&isSafeLcon);    // Da paso si hay carros de este lado dormidos
         }
-        sleep(greenLightTimeL);
+        sleep(greenLightTimeL);     // Espera el tiempo de luz verde izquierdo
 
 
-        lock(&bridgeDirMutex);    
+        lock(&bridgeDirMutex);  // Pone el semaforo derecho en verde
         bridgeDir = -1;
         unlock(&bridgeDirMutex);
-        
+
         printf("\nSemaforo derecho en verde\n\n");
         if (vehiclesOnBridge == 0) {
-            pthread_cond_broadcast(&isSafeRcon);
+            pthread_cond_broadcast(&isSafeRcon);    // Da paso si hay carros de este lado dormidos
         }
-        sleep(greenLightTimeR);
+        sleep(greenLightTimeR);     // Espera el tiempo de luz verde derecho
     }
 
     pthread_exit(0);
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------
+// Hilo principal del modo semaforo
 void *semaphore(void *args) {
 
     pthread_t createVehiculeRThread;
     pthread_t createVehiculeLThread;
     pthread_t createSemaphoreChangeThread;
 
-    pthread_create(&createSemaphoreChangeThread,NULL,semaphoreChange,NULL);
-    pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);
-    pthread_create(&createVehiculeLThread,NULL,createVehiculeL,NULL);
+    totalVehicles = vehiclesL + vehiclesR;
+
+    pthread_create(&createSemaphoreChangeThread,NULL,semaphoreChange,NULL);    // Crea hilo de cambio de semaforos
+    pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);   // Crea hilo de creacion de carros por la derecha
+    pthread_create(&createVehiculeLThread,NULL,createVehiculeL,NULL);   // Crea hilo de creacion de carros por la izquierda
 
     pthread_join(createVehiculeRThread,NULL);
     pthread_join(createVehiculeLThread,NULL);
@@ -504,74 +511,76 @@ void *semaphore(void *args) {
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------
+// Funcion que lee las variables del archivo de configuracion
+// y las inicializa
 void readConfiguration(){
     char const* const fileName = "config.txt";
-    FILE* file = fopen(fileName, "r");  //abre archivo de configuracion
+    FILE* file = fopen(fileName, "r");  // Abre archivo de configuracion
     char line[256];
     const char s[4] = " = ";
     char *token;
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Tamaño del puente
     strtok(line, s);
     token = strtok(NULL, s);
     bridgeLen = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Media exponencial izquierda
     strtok(line, s);
     token = strtok(NULL, s);
     expAverageL = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Media exponencial derecha
     strtok(line, s);
     token = strtok(NULL, s);
     expAverageR = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Velocidad inferior izquierda
     strtok(line, s);
     token = strtok(NULL, s);
     vehicleVelocityInfL = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Velocidad inferior derecha
     strtok(line, s);
     token = strtok(NULL, s);
     vehicleVelocityInfR = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Velocidad superior izquierda
     strtok(line, s);
     token = strtok(NULL, s);
     vehicleVelocitySupL = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Velocidad superior derecha
     strtok(line, s);
     token = strtok(NULL, s);
     vehicleVelocitySupR = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Cantidad K1 oficiales de transito
     strtok(line, s);
     token = strtok(NULL, s);
     K1 = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Cantidad K2 oficiales de transito
     strtok(line, s);
     token = strtok(NULL, s);
     K2 = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Tiempo de luz verde izquierda
     strtok(line, s);
     token = strtok(NULL, s);
     greenLightTimeL = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Tiempo de luz verde derecha
     strtok(line, s);
     token = strtok(NULL, s);
     greenLightTimeR = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Cantidad de vehiculos por la izquierda
     strtok(line, s);
     token = strtok(NULL, s);
     vehiclesL = atoi(token);
 
-    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);    // Cantidad de vehiculos por la derecha
     strtok(line, s);
     token = strtok(NULL, s);
     vehiclesR = atoi(token);
@@ -581,13 +590,13 @@ void readConfiguration(){
 
 //---------------------------------------------------------------------------------------------------------------------------------------
 int main(){
-    readConfiguration();
+    readConfiguration(); // Lee el archivo de configuracion
 
     srand(time(NULL));   // Initialization, should only be called once.
 
     bridge = (pthread_mutex_t*) malloc(bridgeLen*sizeof(pthread_mutex_t));
 
-    pthread_cond_init(&isSafeLcon,NULL);
+    pthread_cond_init(&isSafeLcon,NULL);    // Inicializacion de mutex y condiciones para semaforos de SO
     pthread_cond_init(&isSafeRcon,NULL);
     pthread_mutex_init(&ambulanceLMutex, NULL);
     pthread_mutex_init(&ambulanceRMutex, NULL);
@@ -598,7 +607,7 @@ int main(){
     pthread_mutex_init(&bridgeDirMutex, NULL);
     pthread_mutex_init(&bridgeDirRealMutex, NULL);
 
-    for(int i=0;i<bridgeLen;i++){
+    for(int i=0;i<bridgeLen;i++){   // Inicializacion del puente
         pthread_mutex_init(&bridge[i],NULL);
     }
 
@@ -635,14 +644,16 @@ int main(){
 
         pthread_join(carnageThread,NULL);
     }
+    // Inicializa el modo semaforo
     else if (mode == 2){
         printf("\n");
         pthread_t semaphoreThread;
 
+        pthread_mutex_init(&totalVehiclesMutex,NULL);
+
         pthread_create(&semaphoreThread,NULL,semaphore,NULL);
 
         pthread_join(semaphoreThread,NULL);
-        printf("sale semaforo");
     }
     else if (mode == 3){
         printf("\n");
