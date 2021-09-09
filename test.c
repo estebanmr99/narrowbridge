@@ -202,7 +202,7 @@ void *vehicle(void *direction){
     int dir = *(int *)direction;
     printf("Vehiculo %lu creado.... %d\n", pthread_self(), dir);
 
-    if(!firstCar){
+    if(!firstCar && mode == 3){
         firstCar = 1;
         lock(&bridgeDirRealMutex);
         bridgeDirReal = dir;
@@ -436,6 +436,10 @@ void *trafficPolice(void *args){
 
 //---------------------------------------------------------------------------------------------------------------------------------------
 void *semaphoreChange(void *args) {
+    lock(&bridgeDirRealMutex);
+    bridgeDirReal = 1;
+    unlock(&bridgeDirRealMutex);
+
     // TODO: funcionalidad de cambio de semaforo
     while (1) {
         lock(&bridgeDirMutex);
