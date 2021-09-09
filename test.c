@@ -103,6 +103,15 @@ void leavingBridgeSemaphore(int dir) {
             lock(&ambulanceRMutex);
             ambulanceR = 0;
             unlock(&ambulanceRMutex);
+            if(bridgeDir == dir){
+                pthread_cond_broadcast(&isSafeRcon);
+            } else{
+                lock(&bridgeDirRealMutex);
+                bridgeDirReal *= -1;
+                unlock(&bridgeDirRealMutex);
+                pthread_cond_broadcast(&isSafeLcon);
+            }
+            return;
         }
         lock(&bridgeDirRealMutex);
         bridgeDirReal *= -1;
@@ -113,6 +122,15 @@ void leavingBridgeSemaphore(int dir) {
             lock(&ambulanceLMutex);
             ambulanceL = 0;
             unlock(&ambulanceLMutex);
+            if(bridgeDir == dir){
+                pthread_cond_broadcast(&isSafeLcon);
+            } else{
+                lock(&bridgeDirRealMutex);
+                bridgeDirReal *= -1;
+                unlock(&bridgeDirRealMutex);
+                pthread_cond_broadcast(&isSafeRcon);
+            }
+            return;
         }
         lock(&bridgeDirRealMutex);
         bridgeDirReal *= -1;
@@ -161,12 +179,16 @@ int isSafeTrafficPolice(int dir, int ambulance, int position){
     }
 }
 
-int isSafeSemaphore(int dir){
+int isSafeSemaphore(int dir, int ambulance){
     // TODO: revisar direccion y ambulancias
-    if(dir == bridgeDir && dir == bridgeDirReal){
-        if((dir == 1) && !ambulanceR){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
-            return 1;
-        }else if((dir == -1) && !ambulanceL){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
+    if(dir == bridgeDirReal){
+        if(dir == bridgeDir){
+            if((dir == 1) && !ambulanceR){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
+                return 1;
+            }else if((dir == -1) && !ambulanceL){ //positivo es izquierda - > derecha, negativo es derecha - > izquerda
+                return 1;
+            }
+        } else if(ambulance){
             return 1;
         }
 
@@ -224,7 +246,7 @@ void *vehicle(void *direction){
     if (mode == 1){
         isSafe = isSafeCarnage(dir);
     }else if (mode == 2){
-        isSafe = isSafeSemaphore(dir);
+        isSafe = isSafeSemaphore(dir, ambulance);
     }else if (mode == 3){
         isSafe = 0;
         pthread_cond_signal(&policeLeftCond);
@@ -249,7 +271,7 @@ void *vehicle(void *direction){
         if (mode == 1){
             isSafe = isSafeCarnage(dir);
         }else if (mode == 2){
-            isSafe = isSafeSemaphore(dir);
+            isSafe = isSafeSemaphore(dir, ambulance);
         }else if (mode == 3){
             isSafe = isSafeTrafficPolice(dir, ambulance, position);
         }
