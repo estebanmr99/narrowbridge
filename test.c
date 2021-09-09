@@ -15,9 +15,10 @@ int expAverageL,expAverageR;
 int vehicleVelocityInfL,vehicleVelocityInfR;
 int vehicleVelocitySupL,vehicleVelocitySupR;
 int K1,K2;
-int K1Temp,K2Temp; // Variables pasan cambiando -- Poner semaforos -- pendiente
+int K1Temp,K2Temp; // Variables pasan cambiando
 int greenLightTimeL,greenLightTimeR;
 int vehiclesL,vehiclesR;
+int vehiclesLCounter,vehiclesRCounter;
 int ambulanceL, ambulanceR; // Variables pasan cambiando
 int vehiclesOnBridge; // Variable pasan cambiando
 int vehicleQuantityL, vehicleQuantityR; // Variables pasan cambiando
@@ -30,6 +31,7 @@ pthread_t *vehiclesPR;
 pthread_mutex_t *bridge;
 pthread_mutex_t policeLeftMutex, policeRightMutex;
 pthread_mutex_t K1TempMutex, K2TempMutex;
+pthread_mutex_t vehiclesLCounterMutex, vehiclesRCounterMutex;
 pthread_mutex_t ambulanceLMutex, ambulanceRMutex;
 pthread_mutex_t vehiclesOnBridgeMutex;
 pthread_mutex_t vehicleQuantityLMutex, vehicleQuantityRMutex;
@@ -37,7 +39,6 @@ pthread_mutex_t bridgeDirMutex;
 pthread_mutex_t bridgeDirRealMutex;
 pthread_cond_t isSafeLcon, isSafeRcon;
 pthread_cond_t policeRightCond, policeLeftCond;
-pthread_cond_t K1TempCond, K2TempCond;
 
 void crossBridge(int dir, int vel, unsigned long int id){
     int start = dir == 1 ? 0 : bridgeLen - 1;
@@ -58,6 +59,16 @@ void crossBridge(int dir, int vel, unsigned long int id){
     lock(&vehiclesOnBridgeMutex);
     --vehiclesOnBridge;
     unlock(&vehiclesOnBridgeMutex);
+
+    if(dir == 1 && mode == 3){
+        lock(&vehiclesLCounterMutex);
+        --vehiclesLCounter;
+        unlock(&vehiclesLCounterMutex);
+    } else if (dir == -1 && mode == 3){
+        lock(&vehiclesRCounterMutex);
+        --vehiclesRCounter;
+        unlock(&vehiclesRCounterMutex);
+    }
     
     printf("Vehiculo %lu salio.... %d\n --------------- Vehiculos en el puente %d\n", pthread_self(), dir, vehiclesOnBridge);
 }
@@ -83,16 +94,16 @@ void leavingBridgeCarnage(int dir){
 void leavingBridgeTrafficPolice(int dir){
     if((dir == -1) && vehiclesOnBridge == 0){
         printf("\nleaving bridge R\n\n");
-        lock(&bridgeDirMutex);
-        bridgeDir = 1;
-        unlock(&bridgeDirMutex);
+        lock(&bridgeDirRealMutex);
+        bridgeDirReal = 1;
+        unlock(&bridgeDirRealMutex);
         pthread_cond_signal(&policeLeftCond);
     }else if((dir == 1) && vehiclesOnBridge == 0){
         printf("\nleaving bridge L\n\n");
-        // lock(&bridgeDirMutex);
-        // bridgeDir = -1;
-        // unlock(&bridgeDirMutex);
-        // pthread_cond_signal(&policeRightCond);
+        lock(&bridgeDirRealMutex);
+        bridgeDirReal = -1;
+        unlock(&bridgeDirRealMutex);
+        pthread_cond_signal(&policeRightCond);
     }
 }
 
@@ -161,15 +172,19 @@ int isSafeCarnage(int dir){
 
 
 int isSafeTrafficPolice(int dir, int ambulance, int position){
-    if(dir == bridgeDir){
+    if(dir == bridgeDirReal){
         if((dir == 1 && K1Temp > 0)){
+            lock(&K1TempMutex);
             --K1Temp;
+            unlock(&K1TempMutex);
             return 1;
         }else if (dir == -1 && K2Temp > 0){
+            lock(&K2TempMutex);
             --K2Temp;
+            unlock(&K2TempMutex);
             return 1;
         }else if(ambulance && position == 1){
-            if((dir == 1 && K1Temp == 0 && vehiclesOnBridge > 0) || (dir == -1 && K2Temp == 0 && vehiclesOnBridge > 0)){ 
+            if((dir == 1 && K1Temp == 0) || (dir == -1 && K2Temp == 0)){ 
                 return 1;
             }
         }
@@ -207,6 +222,9 @@ void *vehicle(void *direction){
         lock(&bridgeDirRealMutex);
         bridgeDirReal = dir;
         unlock(&bridgeDirRealMutex);
+        lock(&bridgeDirMutex);
+        bridgeDir = dir;
+        unlock(&bridgeDirMutex);
     }
 
     if (dir == 1){
@@ -249,7 +267,6 @@ void *vehicle(void *direction){
         isSafe = isSafeSemaphore(dir, ambulance);
     }else if (mode == 3){
         isSafe = 0;
-        pthread_cond_signal(&policeLeftCond);
         if(position == 1){
             dir == 1 ? pthread_cond_signal(&policeLeftCond) : pthread_cond_signal(&policeRightCond);
         }
@@ -347,58 +364,61 @@ void *carnage(void *args){
 
 //---------------------------------------------------------------------------------------------------------------------------------------
 void *policeLeft(void *args){
-    while (1) {
+    while (vehiclesLCounter) {
         printf("Se durmio policia IZQUIERDO\n");
         pthread_cond_wait(&policeLeftCond, &policeLeftMutex);
+        lock(&K1TempMutex);
         K1Temp = K1;
+        unlock(&K1TempMutex);
         printf("Se desperto policia IZQUIERDO\n");
-        if(vehiclesOnBridge == 0 && bridgeDir == 1){
+        if(vehiclesOnBridge == 0 && bridgeDir == 1 && bridgeDirReal == 1){
             if(vehicleQuantityL > 0){
                 for(int i = 0; i < K1 + 1; i++){
                     pthread_cond_signal(&isSafeLcon);
                 }
+                lock(&bridgeDirMutex);
+                bridgeDir = -1;
+                unlock(&bridgeDirMutex);
             }else{
                 lock(&bridgeDirMutex);
                 bridgeDir = -1;
                 unlock(&bridgeDirMutex);
+                lock(&bridgeDirRealMutex);
+                bridgeDirReal = -1;
+                unlock(&bridgeDirRealMutex);
                 pthread_cond_signal(&policeRightCond);
-            }
-        }else if(vehiclesOnBridge > 0 && bridgeDir == 1){ //areglar que verifique la direccion real del puente
-            if(vehicleQuantityL > 0){
-                for(int i = 0; i < K1 + 1; i++){
-                    pthread_cond_signal(&isSafeLcon);
-                }
             }
         }
     }
-    printf("Termina el hp hilo\n");
 
     pthread_exit(0);
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------
 void *policeRight(void *args){
-    while (1) {
+    while (vehiclesRCounter) {
         printf("Se durmio policia DERECHO\n");
         pthread_cond_wait(&policeRightCond, &policeRightMutex);
+        lock(&K2TempMutex);
         K2Temp = K2;
+        unlock(&K2TempMutex);
         printf("Se desperto policia DERECHO\n");
-        if(vehiclesOnBridge == 0 && bridgeDir == -1){
+        if(vehiclesOnBridge == 0 && bridgeDir == -1 && bridgeDirReal == -1){
             if(vehicleQuantityR > 0){
-                for(int i = 0; i < K1 + 1; i++){
+                for(int i = 0; i < K2 + 1; i++){
                     pthread_cond_signal(&isSafeRcon);
                 }
+                lock(&bridgeDirMutex);
+                bridgeDir = 1;
+                unlock(&bridgeDirMutex);
             }else{
                 lock(&bridgeDirMutex);
                 bridgeDir = 1;
                 unlock(&bridgeDirMutex);
+                lock(&bridgeDirRealMutex);
+                bridgeDirReal = 1;
+                unlock(&bridgeDirRealMutex);
                 pthread_cond_signal(&policeLeftCond);
-            }
-        }else if(vehiclesOnBridge > 0 && bridgeDir == -1){
-            if(vehicleQuantityR > 0){
-                for(int i = 0; i < K1 + 1; i++){
-                    pthread_cond_signal(&isSafeRcon);
-                }
             }
         }
     }
@@ -417,19 +437,18 @@ void *trafficPolice(void *args){
 
     K1Temp = K1;
     K2Temp = K2;
-    
-    lock(&bridgeDirMutex);
-    bridgeDir = 1; // la direccion deberia de cambiar del primer carro que se crea
-    unlock(&bridgeDirMutex);
+
+    vehiclesLCounter = vehiclesL;
+    vehiclesRCounter = vehiclesR;
 
     pthread_create(&policeLeftThread,NULL,policeLeft,NULL);
-    //pthread_create(&policeRightThread,NULL,policeRight,NULL);
+    pthread_create(&policeRightThread,NULL,policeRight,NULL);
 
     pthread_create(&createVehiculeLThread,NULL,createVehiculeL,NULL);
-    //pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);
+    pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);
 
     pthread_join(createVehiculeLThread,NULL);
-    //pthread_join(createVehiculeRThread,NULL);
+    pthread_join(createVehiculeRThread,NULL);
 
     pthread_exit(0);
 }
@@ -638,8 +657,8 @@ int main(){
         pthread_mutex_init(&K1TempMutex, NULL);
         pthread_mutex_init(&K2TempMutex, NULL);
 
-        pthread_cond_init(&K1TempCond,NULL);
-        pthread_cond_init(&K2TempCond,NULL);
+        pthread_mutex_init(&vehiclesLCounterMutex, NULL);
+        pthread_mutex_init(&vehiclesRCounterMutex, NULL);
 
         pthread_create(&trafficPoliceThread,NULL,trafficPolice,NULL);
 
@@ -649,7 +668,7 @@ int main(){
         printf("\nOpcion invalida\n");
     }
 
-    pthread_exit(0);
+    //pthread_exit(0);
 
     return 0;
 }
