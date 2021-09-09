@@ -1,6 +1,6 @@
 SOURCEC=NarrowBridge.c
 
-TARGETC=NarrowBridge
+TARGETC=narrowBridge
 
 .PHONY: all c cpp
 
