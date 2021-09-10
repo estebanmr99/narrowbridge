@@ -2,7 +2,7 @@
 
 //---------------------------------------------------------------------------------------------------------------------------------------
 //Funcion que hace el paso de los vehiculos sobre el puente de semaforos
-void crossBridge(int dir, int vel, unsigned long int id){
+void crossBridge(int dir, int vel, int id){
     int start = dir == 1 ? 0 : bridgeLen - 1; // Se define el inicio del puente en base a la direccion
     int end = dir == -1 ? -1 : bridgeLen;     // Se define el final del puente en base a la direccion
 
@@ -10,9 +10,9 @@ void crossBridge(int dir, int vel, unsigned long int id){
     lock(&vehiclesOnBridgeMutex);
     ++vehiclesOnBridge;                       // Aumenta el contador sobre los vehiculos sobre el puente
     unlock(&vehiclesOnBridgeMutex);
-    printf("V %lu en pos %d en la direccion: %d\n", id, start, dir);
+    printf("V %d en pos %d en la direccion: %d\n", id, start, dir);
     for(int i = start + dir; i != end; i += dir){
-        printf("V %lu en pos %d en la direccion: %d\n", id, i, dir);
+        printf("V %d en pos %d en la direccion: %d\n", id, i, dir);
         sleep(vel);
         lock(&bridge[i]);
         unlock(&bridge[i - dir]);
@@ -22,21 +22,22 @@ void crossBridge(int dir, int vel, unsigned long int id){
     --vehiclesOnBridge;                       // Decrementa el contador sobre los vehiculos sobre el puente
     unlock(&vehiclesOnBridgeMutex);
 
-    if(dir == 1 && mode == 3){                // Si el modo es de los oficiales decrementa el contador de carros que pasaron el puente
+    if(dir == 1 && (mode == 3 || mode == 2)){                // Si el modo es de los oficiales decrementa el contador de carros que pasaron el puente
         lock(&vehiclesLCounterMutex);
         --vehiclesLCounter;
         unlock(&vehiclesLCounterMutex);
-    } else if (dir == -1 && mode == 3){
+    } else if (dir == -1 && (mode == 3 || mode == 2)){
         lock(&vehiclesRCounterMutex);
         --vehiclesRCounter;
         unlock(&vehiclesRCounterMutex);
-    } else if (mode == 2) {                  // Si el modo es el de los semaforos se decrementa el contador de carros pendientes por crear 
+    }
+    if (mode == 2) {                  // Si el modo es el de los semaforos se decrementa el contador de carros pendientes por crear 
         lock(&totalVehiclesMutex);
         --totalVehicles;
         unlock(&totalVehiclesMutex);
     }
 
-    printf("Vehiculo %lu salio.... %d\n --------------- Vehiculos en el puente %d\n", pthread_self(), dir, vehiclesOnBridge);
+    printf("Vehiculo %d salio.... %d\n --------------- Vehiculos en el puente %d\n", id, dir, vehiclesOnBridge);
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------
@@ -87,7 +88,7 @@ void leavingBridgeSemaphore(int dir) {
             unlock(&ambulanceRMutex);
             if(bridgeDir == dir){           // Doy paso al lado que este en verde
                 pthread_cond_broadcast(&isSafeRcon);
-            } else{
+            } else if (vehiclesLCounter > 0){
                 lock(&bridgeDirRealMutex);
                 bridgeDirReal *= -1;
                 unlock(&bridgeDirRealMutex);
@@ -95,10 +96,12 @@ void leavingBridgeSemaphore(int dir) {
             }
             return;
         }
-        lock(&bridgeDirRealMutex);          // Si no soy una ambulancia
-        bridgeDirReal *= -1;                // Da paso al otro lado del puente
-        unlock(&bridgeDirRealMutex);
-        pthread_cond_broadcast(&isSafeLcon);
+        if (vehiclesLCounter > 0){
+            lock(&bridgeDirRealMutex);          // Si no soy una ambulancia
+            bridgeDirReal *= -1;                // Da paso al otro lado del puente
+            unlock(&bridgeDirRealMutex);
+            pthread_cond_broadcast(&isSafeLcon);
+        }
     }else if(dir == 1 && vehiclesOnBridge == 0){ // Si soy el ultimo vehiculo hacia la derecha
         if (ambulanceL){                         // y soy una ambulancia
             lock(&ambulanceLMutex);
@@ -106,7 +109,7 @@ void leavingBridgeSemaphore(int dir) {
             unlock(&ambulanceLMutex);
             if(bridgeDir == dir){                // Doy paso al lado que este en verde
                 pthread_cond_broadcast(&isSafeLcon);
-            } else{
+            } else if (vehiclesRCounter > 0){
                 lock(&bridgeDirRealMutex);
                 bridgeDirReal *= -1;
                 unlock(&bridgeDirRealMutex);
@@ -114,10 +117,12 @@ void leavingBridgeSemaphore(int dir) {
             }
             return;
         }
-        lock(&bridgeDirRealMutex);            // Si no soy una ambulancia
-        bridgeDirReal *= -1;                  // doy paso al otro lado del puente
-        unlock(&bridgeDirRealMutex);
-        pthread_cond_broadcast(&isSafeRcon);
+        if(vehiclesRCounter > 0){
+            lock(&bridgeDirRealMutex);            // Si no soy una ambulancia
+            bridgeDirReal *= -1;                  // doy paso al otro lado del puente
+            unlock(&bridgeDirRealMutex);
+            pthread_cond_broadcast(&isSafeRcon);
+        }
     }
 }
 
@@ -192,7 +197,7 @@ int isSafeSemaphore(int dir, int ambulance){
 //Funcion que representa un vehiculo, existe la posibilidad de que sea ambulancia o un simple carro
 void *vehicle(void *direction){
     int dir = *(int *)direction; // Define la direccion del carro
-    printf("Vehiculo %lu creado.... %d\n", pthread_self(), dir);
+    int id = 0;
 
     if(!firstCar && mode == 3){             // Si es el primero carro del modo 3 agarra las direcciones del puente
         firstCar = 1;
@@ -208,11 +213,22 @@ void *vehicle(void *direction){
         lock(&vehicleQuantityLMutex);
         ++vehicleQuantityL;
         unlock(&vehicleQuantityLMutex);
+        lock(&vehiclesLCounterAscMutex);
+        ++vehiclesLCounterAsc;
+        unlock(&vehiclesLCounterAscMutex);
+        id = vehiclesLCounterAsc;
     }else{                                  //Si es de derecha a izquierda aumento el contador de la cola derecha
         lock(&vehicleQuantityRMutex);
         ++vehicleQuantityR;
         unlock(&vehicleQuantityRMutex);
+        lock(&vehiclesRCounterAscMutex);
+        ++vehiclesRCounterAsc;
+        unlock(&vehiclesRCounterAscMutex);
+        id = vehiclesRCounterAsc;
     }
+
+    printf("Vehiculo %d creado.... %d\n", id, dir);
+
     int position = dir == 1 ? vehicleQuantityL : vehicleQuantityR;      // Define la posicion en la cola del carro
     int isAmb = rand() % 100;
     int velocity = 0;
@@ -226,7 +242,7 @@ void *vehicle(void *direction){
 
     if (isAmb <= 5){                                                    // 5% de probabilidad de que el vehiculo sea ambulancia
         ambulance = 1;
-        printf("Vehiculo %lu es una ambulancia de lado: %d\n", pthread_self(), dir);
+        printf("Vehiculo %d es una ambulancia de lado: %d\n", id, dir);
         if (position == 1){                                             // Si la ambulancia esta al principio de alguna cola se levanta la bandera
             lock(&ambulanceLMutex);
             ambulanceL = dir == 1 ? 1 : ambulanceL;
@@ -281,7 +297,7 @@ void *vehicle(void *direction){
         unlock(&vehicleQuantityRMutex);
     }
 
-    crossBridge(dir, velocity, pthread_self());                     // Comienza a pasar el puente
+    crossBridge(dir, velocity, id);                     // Comienza a pasar el puente
 
     if (mode == 1){                                                 // Toma acciones una vez que un carro sale del puente
         leavingBridgeCarnage(dir);
@@ -444,6 +460,7 @@ void *semaphoreChange(void *args) {
     unlock(&bridgeDirRealMutex);
 
     while (totalVehicles) { // Mientras queden carros sin pasar
+        printf("--------------Vehiculos pendientes por salir: %d-----------------\nBridgeDir = %d --------------- BridgeDirReal = %d\n", totalVehicles, bridgeDir, bridgeDirReal);
         lock(&bridgeDirMutex);  // Pone el semaforo izquierdo en verde
         bridgeDir = 1;
         unlock(&bridgeDirMutex);
@@ -478,6 +495,8 @@ void *semaphore(void *args) {
     pthread_t createSemaphoreChangeThread;
 
     totalVehicles = vehiclesL + vehiclesR;
+    vehiclesLCounter = vehiclesL;
+    vehiclesRCounter = vehiclesR;
 
     pthread_create(&createSemaphoreChangeThread,NULL,semaphoreChange,NULL);    // Crea hilo de cambio de semaforos
     pthread_create(&createVehiculeRThread,NULL,createVehiculeR,NULL);   // Crea hilo de creacion de carros por la derecha
@@ -582,7 +601,8 @@ int main(){
     pthread_mutex_init(&vehiclesOnBridgeMutex, NULL);
     pthread_mutex_init(&vehicleQuantityLMutex, NULL);
     pthread_mutex_init(&vehicleQuantityRMutex, NULL);
-    pthread_mutex_init(&bridgeDirMutex, NULL);
+    pthread_mutex_init(&vehiclesLCounterAscMutex, NULL);
+    pthread_mutex_init(&vehiclesRCounterAscMutex, NULL);
     pthread_mutex_init(&bridgeDirMutex, NULL);
     pthread_mutex_init(&bridgeDirRealMutex, NULL);
 
@@ -601,6 +621,8 @@ int main(){
     vehiclesOnBridge = 0;
     bridgeDir = 0;
     firstCar = 0;
+    vehiclesLCounterAsc = 0;
+    vehiclesRCounterAsc = 0;
 
     // Menu para escoger el modo de administras el puente, 1- Carnage, 2- Semaforos, 3- Oficiales
     printf("\n                   NarrowBridge\n");
@@ -626,6 +648,8 @@ int main(){
         pthread_t semaphoreThread;
 
         pthread_mutex_init(&totalVehiclesMutex,NULL);
+        pthread_mutex_init(&vehiclesLCounterMutex, NULL);
+        pthread_mutex_init(&vehiclesRCounterMutex, NULL);
 
         pthread_create(&semaphoreThread,NULL,semaphore,NULL);
 
